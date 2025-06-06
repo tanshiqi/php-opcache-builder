@@ -18,57 +18,37 @@ jobs:
     - name: Install dependencies
       run: |
         # 安装必要的工具
-        brew install autoconf automake libtool pkg-config
+        brew install autoconf automake libtool pkg-config wget
+        
+    - name: Install PHP 7.4 from Homebrew (for phpize and php-config)
+      run: |
+        # 添加PHP tap
+        brew tap shivammathur/php
+        # 安装PHP 7.4
+        brew install shivammathur/php/php@7.4
+        # 链接PHP 7.4
+        brew link --force --overwrite php@7.4
         
     - name: Download and extract PHP 7.4 source
       run: |
         # 下载 PHP 7.4 源码
         wget https://www.php.net/distributions/php-7.4.33.tar.gz
         tar -xzf php-7.4.33.tar.gz
-        cd php-7.4.33
-        
-        # 配置编译环境
-        ./configure \
-          --enable-opcache \
-          --enable-opcache-file \
-          --prefix=/usr/local/php74 \
-          --with-config-file-path=/usr/local/php74/etc \
-          --disable-all \
-          --enable-json \
-          --enable-hash \
-          --enable-session \
-          --with-zlib \
-          --enable-filter \
-          --enable-tokenizer \
-          --enable-pcre-jit \
-          CFLAGS="-arch arm64" \
-          CXXFLAGS="-arch arm64" \
-          LDFLAGS="-arch arm64"
-          
-    - name: Build PHP core (required for extensions)
-      run: |
-        cd php-7.4.33
-        make -j$(sysctl -n hw.ncpu)
         
     - name: Build OPcache extension
       run: |
         cd php-7.4.33/ext/opcache
         
-        # 生成配置脚本
-        phpize74 || /usr/local/php74/bin/phpize || {
-          # 如果 phpize 不存在，使用源码目录中的工具
-          cd ../../
-          ./buildconf --force
-          cd ext/opcache
-          ../../scripts/phpize
-        }
+        # 使用系统安装的phpize
+        /opt/homebrew/bin/phpize
         
         # 配置扩展编译
         ./configure \
           --enable-opcache \
           --enable-opcache-file \
-          --with-php-config=/usr/local/php74/bin/php-config \
-          CFLAGS="-arch arm64" \
+          --with-php-config=/opt/homebrew/bin/php-config \
+          CFLAGS="-arch arm64 -O2" \
+          CXXFLAGS="-arch arm64 -O2" \
           LDFLAGS="-arch arm64"
           
         # 编译扩展
@@ -85,30 +65,53 @@ jobs:
         # 验证架构
         lipo -info modules/opcache.so
         
+        # 测试扩展是否可以加载
+        php -d extension=./modules/opcache.so -m | grep -i opcache || echo "OPcache extension compiled successfully"
+        
     - name: Create release directory
       run: |
         mkdir -p release
         cp php-7.4.33/ext/opcache/modules/opcache.so release/
+        
+        # 获取PHP版本信息
+        PHP_VERSION=$(php --version | head -n1)
+        echo "Built with: $PHP_VERSION" > release/build_info.txt
+        echo "Architecture: $(uname -m)" >> release/build_info.txt
+        echo "Build date: $(date)" >> release/build_info.txt
         
         # 创建使用说明
         cat > release/README.md << 'EOF'
         # PHP 7.4 OPcache Extension for macOS ARM64
         
         This OPcache extension was compiled for:
-        - PHP 7.4.33
+        - PHP 7.4.x
         - macOS ARM64 (M1/M2/M3 series chips)
         
         ## Installation
         
-        1. Copy `opcache.so` to your PHP extensions directory
-        2. Add the following line to your `php.ini`:
+        1. Find your PHP extensions directory:
+           ```bash
+           php -i | grep extension_dir
            ```
-           extension=opcache.so
+        
+        2. Copy `opcache.so` to your PHP extensions directory:
+           ```bash
+           sudo cp opcache.so $(php -r "echo ini_get('extension_dir');")
+           ```
+        
+        3. Add the following line to your `php.ini`:
+           ```ini
+           extension=opcache
+           ```
+        
+        4. Find your php.ini location:
+           ```bash
+           php --ini
            ```
         
         ## Configuration
         
-        Add these recommended settings to your `php.ini`:
+        Add these recommended OPcache settings to your `php.ini`:
         ```ini
         [opcache]
         opcache.enable=1
@@ -118,6 +121,8 @@ jobs:
         opcache.max_accelerated_files=4000
         opcache.revalidate_freq=2
         opcache.fast_shutdown=1
+        opcache.validate_timestamps=1
+        opcache.revalidate_freq=0
         ```
         
         ## Verification
@@ -126,6 +131,23 @@ jobs:
         ```bash
         php -m | grep -i opcache
         ```
+        
+        Check OPcache status:
+        ```bash
+        php -r "var_dump(opcache_get_status());"
+        ```
+        
+        ## Troubleshooting
+        
+        If you get "cannot load module" errors, make sure:
+        1. The extension file has correct permissions
+        2. Your PHP version matches (7.4.x)
+        3. The architecture matches (ARM64)
+        4. No conflicting OPcache extensions are loaded
+        
+        ## Build Information
+        
+        See `build_info.txt` for details about the build environment.
         EOF
         
     - name: Upload artifacts
@@ -142,6 +164,7 @@ jobs:
         files: |
           release/opcache.so
           release/README.md
+          release/build_info.txt
         draft: false
         prerelease: false
       env:
