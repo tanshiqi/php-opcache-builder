@@ -1,0 +1,41 @@
+name: Build OPcache for PHP 7.4 (macOS)
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          brew install autoconf bison re2c
+
+      - name: Download PHP 7.4 source
+        run: |
+          curl -O https://www.php.net/distributions/php-7.4.33.tar.gz 
+          tar zxpf php-7.4.33.tar.gz
+
+      - name: Build OPcache extension
+        run: |
+          cd php-7.4.33/ext/opcache
+          phpize
+          ./configure --enable-opcache
+          make
+
+      - name: Package the result
+        run: |
+          cp php-7.4.33/ext/opcache/modules/opcache.so opcache.so
+          zip -r opcache-macos-arm64.zip opcache.so
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: opcache-macos-arm64
+          path: opcache-macos-arm64.zip
