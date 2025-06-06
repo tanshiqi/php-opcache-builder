@@ -11,11 +11,24 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4  # 保持最新版本
+        uses: actions/checkout@v4
 
-      - name: Install dependencies
+      - name: Install Homebrew dependencies
         run: |
           brew install autoconf bison re2c
+
+      - name: Install PHP 7.4 via Homebrew
+        run: |
+          brew install php@7.4
+
+      - name: Ensure PHP 7.4 is in PATH
+        run: |
+          echo '/usr/local/opt/php@7.4/bin' >> $GITHUB_PATH
+          echo '/usr/local/opt/php@7.4/sbin' >> $GITHUB_PATH
+
+      - name: Verify phpize is available
+        run: |
+          phpize --version
 
       - name: Download PHP 7.4 source
         run: |
@@ -25,8 +38,8 @@ jobs:
       - name: Build OPcache extension
         run: |
           cd php-7.4.33/ext/opcache
-          phpize
-          ./configure --enable-opcache
+          /usr/local/opt/php@7.4/bin/phpize
+          ./configure --enable-opcache --with-php-config=/usr/local/opt/php@7.4/bin/php-config
           make
 
       - name: Package the result
@@ -34,8 +47,8 @@ jobs:
           cp php-7.4.33/ext/opcache/modules/opcache.so opcache.so
           zip -r opcache-macos-arm64.zip opcache.so
 
-      - name: Upload artifact (v4)
-        uses: actions/upload-artifact@v4  # 修复点：升级到 v4
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
         with:
           name: opcache-macos-arm64
           path: opcache-macos-arm64.zip
