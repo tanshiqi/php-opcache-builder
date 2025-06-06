@@ -17,9 +17,13 @@ jobs:
         run: |
           brew install autoconf bison re2c
 
-      - name: Install PHP 7.4 via Homebrew
+      - name: Add kaorimatz/tap for PHP 7.4
         run: |
-          brew install php@7.4
+          brew tap kaorimatz/php
+
+      - name: Install PHP 7.4 from kaorimatz/tap
+        run: |
+          brew install kaorimatz/php/php@7.4
 
       - name: Ensure PHP 7.4 is in PATH
         run: |
